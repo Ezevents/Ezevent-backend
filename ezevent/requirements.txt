@@ -1,0 +1,20 @@
+# Python 3.10
+django
+djangorestframework
+djangorestframework_simplejwt
+gunicorn
+uvicorn
+lxml
+urllib3
+jsonschema
+requests
+Werkzeug
+whitenoise[brotli]
+python-dotenv
+psycopg2-binary
+asyncpg
+httpx
+passlib[bcrypt]
+django-cors-headers
+django_smtp_ssl
+dj-database-url
