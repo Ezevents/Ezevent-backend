@@ -163,3 +163,4 @@ class PurchaseDetailView(generics.RetrieveAPIView):
             if email:
                 return Purchase.objects.filter(purchaser_email=email)
             return Purchase.objects.none()
+        
