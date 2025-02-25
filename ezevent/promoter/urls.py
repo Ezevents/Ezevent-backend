@@ -1,5 +1,4 @@
-from rest_framework.routers import DefaultRouter
-from django.urls import path, include
+from django.urls import path
 from . import views
 
 urlpatterns = [
@@ -14,7 +13,7 @@ urlpatterns = [
     path('list_tickets/<int:event_id>/', views.ListTicketsView.as_view(), name='list_tickets'),
     path('update_ticket/<int:ticket_id>/', views.UpdateTicketView.as_view(), name='update_ticket'),
     path('delete_ticket/<int:ticket_id>/', views.DeleteTicketView.as_view(), name='delete_ticket'),
-    
+
     path('event_summary/<int:event_id>/', views.EventSummaryView.as_view(), name='event_summary'),
 
     path('search_events', views.SearchEventsView.as_view(), name='search_events'),
@@ -24,4 +23,5 @@ urlpatterns = [
 
     path('pending_payments', views.PendingPaymentsListView.as_view(), name='pending_payments'),
     path('purchase/<int:purchase_id>/approve', views.PromoterPaymentApprovalView.as_view(), name='approve_payment'),
+    path('scan_ticket', views.ScanTicketView.as_view(), name='scan_ticket'),
 ]

@@ -52,3 +52,13 @@ class PurchaseAttendee(models.Model):
     
     class Meta:
         unique_together = ('purchase', 'attendee')
+
+class TicketPDF(models.Model):
+    purchase = models.ForeignKey(Purchase, on_delete=models.CASCADE, related_name='ticket_pdfs')
+    attendee = models.ForeignKey(Attendee, on_delete=models.CASCADE)
+    pdf_file = models.FileField(upload_to='tickets/')
+    is_used = models.BooleanField(default=False)
+    used_at = models.DateTimeField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"Ticket for {self.attendee.first_name} {self.attendee.last_name}"
