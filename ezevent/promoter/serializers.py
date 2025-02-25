@@ -25,4 +25,6 @@ class EventSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         if data['start_date'] >= data['end_date']:
-            raise serializers.Val
+            raise serializers.ValidationError("End date must be after start date")
+            
+        return data

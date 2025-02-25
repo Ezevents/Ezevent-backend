@@ -1,3 +1,4 @@
+from rest_framework.exceptions import NotFound
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -45,13 +46,25 @@ class DeleteEventView(generics.DestroyAPIView):
     def get_queryset(self):
         return Event.objects.filter(promoter=self.request.user)
 
+# class CreateTicketView(generics.CreateAPIView):
+#     serializer_class = TicketTypeSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def perform_create(self, serializer):
+#         event = Event.objects.get(id=self.kwargs['event_id'], promoter=self.request.user)
+#         serializer.save(event=event)
+
 class CreateTicketView(generics.CreateAPIView):
     serializer_class = TicketTypeSerializer
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        event = Event.objects.get(id=self.kwargs['event_id'], promoter=self.request.user)
-        serializer.save(event=event)
+        event_id = self.kwargs.get('event_id')
+        try:
+            event = Event.objects.get(id=event_id, promoter=self.request.user)
+            serializer.save(event=event)
+        except Event.DoesNotExist:
+            raise NotFound("Event not found or you don't have permission to add tickets to this event")
 
 class ListTicketsView(generics.ListAPIView):
     serializer_class = TicketTypeSerializer

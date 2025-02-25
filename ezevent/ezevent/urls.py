@@ -23,5 +23,6 @@ urlpatterns = [
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
     path('auth/', include('auths.urls')),
-    path('admins/',include('admins.urls'))
+    path('admins/',include('admins.urls')),
+    path('promoter/',include('promoter.urls')),
 ]
