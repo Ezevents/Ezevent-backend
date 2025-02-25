@@ -1,5 +1,3 @@
-
-# urls.py
 from rest_framework.routers import DefaultRouter
 from django.urls import path, include
 from . import views
@@ -23,4 +21,7 @@ urlpatterns = [
     path('bulk_create_tickets/<int:event_id>/', views.BulkCreateTicketsView.as_view(), name='bulk_create_tickets'),
     path('event_analytics', views.EventAnalyticsView.as_view(), name='event_analytics'),
     path('event_analytics/<int:event_id>/', views.SingleEventAnalyticsView.as_view(), name='single_event_analytics'),
+
+    path('pending_payments', views.PendingPaymentsListView.as_view(), name='pending_payments'),
+    path('purchase/<int:purchase_id>/approve', views.PromoterPaymentApprovalView.as_view(), name='approve_payment'),
 ]
