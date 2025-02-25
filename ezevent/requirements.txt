@@ -21,4 +21,3 @@ dj-database-url
 qrcode
 reportlab
 pillow
-ast
