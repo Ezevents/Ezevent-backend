@@ -182,8 +182,8 @@ def send_forgot_password_email(request):
     # Generate a token
     token = forgot_password_token(email)
 
-    # Compose the email message
-    subject = 'Forgot Password - Animax Uganda'
+    # Composing the email message
+    subject = 'Forgot Password - Ezevents'
     reset_url = f"http://127.0.0.1:5501/Public/resetPassword.html?token={token}"
     message = format_html(f"""
     <html>
@@ -206,7 +206,7 @@ def send_forgot_password_email(request):
         
         <p>If you did not request this, please ignore this email.</p>
         
-        <p>Best regards,<br>Animax Uganda Team</p>
+        <p>Best regards,<br>Ezevents Team</p>
     </body>
     </html>
     """)
