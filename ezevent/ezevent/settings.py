@@ -9,13 +9,11 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 SECRET_KEY = os.getenv('SECRET_KEY')
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-o*^ci!#^*3wh(2(xmu=!^zbaa^rvy#83(%0%1w9@qh)u)=ffgo'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['127.0.0.1','billblustersbackend.onrender.com','billblustersbackend-production.up.railway.app']
+ALLOWED_HOSTS = ['127.0.0.1','ezevent-backend.up.railway.app','localhost']
 
 TIME_ZONE = 'Africa/Nairobi'
 USE_TZ = True

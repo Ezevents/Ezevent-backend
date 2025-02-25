@@ -58,38 +58,39 @@ class GenerateSignupTokenView(APIView):
 
 def send_signup_token_email(email, token, role_name):
     """Sending signup token via email"""
-    subject = 'Your Signup Token for Bill Busters'
+    subject = 'Your Signup Token for Ezevent'
     
     message = format_html("""
-    <html>
-    <body>
-        <p>Hello,</p>
-        
-        <p>Welcome to <strong>Bill Busters</strong> - your trusted group for collective saving and achieving financial goals together!</p>
-        
-        <p>Your signup token is: <strong>{token}</strong></p>
-        
-        <p>This token is valid for 24 hours. Use it to complete your registration and join us in our journey of saving and achieving our financial dreams.</p>
-        
-        <p>You can sign up as <strong>{role_name}</strong> by clicking the button below:</p>
-        
-        <p>
-            <a href="https://billblusters.netlify.app/public/signup.html?token={token}" 
-               style="display: inline-block; padding: 10px 20px; color: white; background-color: #28a745; 
-                      text-decoration: none; border-radius: 5px;">
-                Sign Up Now
-            </a>
-        </p>
-        
-        <p>If the button doesn't work, use this link:</p>
-        
-        <p><a href="https://billblusters.netlify.app/public/signup.html?token={token}">https://billblusters.netlify.app/vendoraccountcreation?token={token}</a></p>
-        
-        <p>If you did not request this, please ignore this email.</p>
-        
-        <p>Best regards,<br>The Bill Busters Team</p>
-    </body>
-    </html>
+                        <html>
+                        <body>
+                            <p>Hello,</p>
+                            
+                            <p>Welcome to <strong>Ezevent</strong> – your go-to platform for seamless event planning and management!</p>
+                            
+                            <p>Your signup token is: <strong>{token}</strong></p>
+                            
+                            <p>This token is valid for 24 hours. Use it to complete your registration and start organizing successful events with ease.</p>
+                            
+                            <p>You can sign up as a <strong>{role_name}</strong> by clicking the button below:</p>
+                            
+                            <p>
+                                <a href="https://billsblusters.netlify.app/public/signup.html?token={token}" 
+                                style="display: inline-block; padding: 10px 20px; color: white; background-color: #007bff; 
+                                        text-decoration: none; border-radius: 5px;">
+                                    Complete Your Registration
+                                </a>
+                            </p>
+                            
+                            <p>If the button doesn't work, use this link:</p>
+                            
+                            <p><a href="https://billsblusters.netlify.app/public/signup.html?token={token}">https://billsblusters.netlify.app/public/signup.html?token={token}</a></p>
+                            
+                            <p>If you did not request this, please ignore this email.</p>
+                            
+                            <p>Best regards,<br>The Ezevent Team</p>
+                        </body>
+                    </html>
+
     """, token=token, role_name=role_name)
     
     email_message = EmailMessage(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
@@ -161,7 +162,7 @@ def send_suspension_email(user, is_suspended):
 
         <p>If you have any questions or believe this was a mistake, please contact our support team.</p>
 
-        <p>Best regards,<br>The Bill Busters Team</p>
+        <p>Best regards,<br>The Ezevent Team</p>
     </body>
     </html>
     """, name=user.firstname,
