@@ -25,4 +25,5 @@ urlpatterns = [
     path('auth/', include('auths.urls')),
     path('admins/',include('admins.urls')),
     path('promoter/',include('promoter.urls')),
+    path('client/',include('client.urls')),
 ]

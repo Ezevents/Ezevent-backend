@@ -38,6 +38,39 @@ class UpdateEventView(generics.UpdateAPIView):
 
     def get_queryset(self):
         return Event.objects.filter(promoter=self.request.user)
+    
+class PublishEventView(APIView):
+    """Publish an event that's currently in draft status"""
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self, request, event_id):
+        try:
+            #getting the event and verify ownership
+            event = Event.objects.get(id=event_id, promoter=request.user)
+            
+            #checking if it's in draft status
+            if event.status != 'draft':
+                return Response({
+                    'error': 'Only draft events can be published',
+                    'current_status': event.status
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            #updating status to published
+            event.status = 'published'
+            event.save()
+            
+            serializer = EventSerializer(event)
+            
+            return Response({
+                'status': 'success',
+                'message': f'Event "{event.title}" has been published',
+                'event': serializer.data
+            })
+            
+        except Event.DoesNotExist:
+            return Response({
+                'error': 'Event not found or you do not have permission to publish it'
+            }, status=status.HTTP_404_NOT_FOUND)
 
 class DeleteEventView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated]
