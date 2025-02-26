@@ -1,6 +1,8 @@
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 import jwt
+import random
+import string
 from django.utils.timezone import now
 from django.middleware import csrf
 from django.http import JsonResponse
@@ -17,13 +19,56 @@ from django.shortcuts import get_object_or_404
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework import exceptions as rest_exceptions, response
-from rest_framework_simplejwt import tokens, views as jwt_views, serializers as jwt_serializers, exceptions as jwt_exceptions
+from rest_framework_simplejwt import views as jwt_views, serializers as jwt_serializers, exceptions as jwt_exceptions
+from rest_framework.views import APIView
+from auths.permissions import IsAdminOrHasRole
+from .admin_views import send_signup_token_email
 
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([])
 def home(request):
     return Response("App is live")
+
+class GenerateSignupTokenView(APIView):
+    permission_classes = [IsAdminOrHasRole]
+    allowed_roles = ['admin']
+
+    # @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request):
+        if not request.user.is_superuser:
+            user_role = UserRole.objects.filter(user=request.user, role__name='admin').exists()
+            if not user_role:
+                return Response({'error': 'Only admins or superuser can generate tokens'}, status=status.HTTP_403_FORBIDDEN)
+
+        email = request.data.get('email')
+        role_name = request.data.get('role')
+
+        role = Role.objects.filter(name=role_name).first()
+        if not role:
+            return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate a 6-digit token
+        token = ''.join(random.choices(string.digits, k=6))
+        expires_at = timezone.now() + timedelta(hours=24)
+
+        signup_token = SignupToken.objects.create(
+            token=token, 
+            role=role,
+            expires_at=expires_at, 
+            used=False
+        )
+
+        try:
+            send_signup_token_email(email, token, role_name)
+        except Exception as e:
+            return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'success': True, 'message': 'Signup token sent to email'}, status=status.HTTP_201_CREATED)
+
 
 @api_view(['POST'])
 @authentication_classes([])
