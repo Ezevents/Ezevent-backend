@@ -1,7 +1,7 @@
 from rest_framework.response import Response
 from django.utils import timezone
 from django.core.mail import EmailMessage
-from .models import  SignupToken
+from admins.models import  SignupToken
 from auths.models import UserRole, Role, Users
 from auths.serializers import UserSerializer
 import random
@@ -18,43 +18,48 @@ from rest_framework.views import APIView
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-@method_decorator(csrf_exempt, name='dispatch')
-@method_decorator(csrf_exempt, name='post')
-class GenerateSignupTokenView(APIView):
-    permission_classes = [IsAdminOrHasRole]
-    allowed_roles = ['admin']
+from django.utils import timezone
+from datetime import timedelta
+import random
+import string
+from auths.permissions import IsAdminOrHasRole
+from rest_framework.decorators import api_view, permission_classes
 
-    @csrf_exempt
-    def post(self, request):
-        if not request.user.is_superuser:
-            user_role = UserRole.objects.filter(user=request.user, role__name='admin').exists()
-            if not user_role:
-                return Response({'error': 'Only admins or superuser can generate tokens'}, status=status.HTTP_403_FORBIDDEN)
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAdminOrHasRole])
+def generate_signup_token(request):
+    # Check if user is admin or superuser
+    if not request.user.is_superuser:
+        user_role = UserRole.objects.filter(user=request.user, role__name='admin').exists()
+        if not user_role:
+            return Response({'error': 'Only admins or superuser can generate tokens'}, status=status.HTTP_403_FORBIDDEN)
 
-        email = request.data.get('email')
-        role_name = request.data.get('role')
+    email = request.data.get('email')
+    role_name = request.data.get('role')
 
-        role = Role.objects.filter(name=role_name).first()
-        if not role:
-            return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
+    role = Role.objects.filter(name=role_name).first()
+    if not role:
+        return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Generate a 6-digit token
-        token = ''.join(random.choices(string.digits, k=6))
-        expires_at = timezone.now() + timedelta(hours=24)
+    # Generate a 6-digit token
+    token = ''.join(random.choices(string.digits, k=6))
+    expires_at = timezone.now() + timedelta(hours=24)
 
-        signup_token = SignupToken.objects.create(
-            token=token, 
-            role=role,
-            expires_at=expires_at, 
-            used=False
-        )
+    signup_token = SignupToken.objects.create(
+        token=token, 
+        role=role,
+        expires_at=expires_at, 
+        used=False
+    )
 
-        try:
-            send_signup_token_email(email, token, role_name)
-        except Exception as e:
-            return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    try:
+        send_signup_token_email(email, token, role_name)
+    except Exception as e:
+        return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({'success': True, 'message': 'Signup token sent to email'}, status=status.HTTP_201_CREATED)
+    return Response({'success': True, 'message': 'Signup token sent to email'}, status=status.HTTP_201_CREATED)
+
 
 def send_signup_token_email(email, token, role_name):
     """Sending signup token via email"""
