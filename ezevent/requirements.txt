@@ -21,3 +21,6 @@ dj-database-url
 qrcode
 reportlab
 pillow
+firebase_admin
+opentelemetry-api 
+opentelemetry-instrumentation
