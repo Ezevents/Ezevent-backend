@@ -12,3 +12,5 @@ env/
 # Ignoring IDE settings
 .idea/
 .vscode/
+
+**/serviceAccountKey.json

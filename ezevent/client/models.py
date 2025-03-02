@@ -40,7 +40,8 @@ class Purchase(models.Model):
     is_approved_by_promoter = models.BooleanField(default=False)
     approval_date = models.DateTimeField(null=True, blank=True)
     qr_code = models.ImageField(upload_to='qr_codes/', null=True, blank=True)
-    ticket_pdf = models.FileField(upload_to='tickets/', null=True, blank=True)
+    # ticket_pdf = models.FileField(upload_to='tickets/', null=True, blank=True)
+    ticket_pdf_url = models.URLField(max_length=500, null=True, blank=True)
     
     def __str__(self):
         return f"Purchase #{self.id} - {self.ticket_type.event.title}"
@@ -56,7 +57,8 @@ class PurchaseAttendee(models.Model):
 class TicketPDF(models.Model):
     purchase = models.ForeignKey(Purchase, on_delete=models.CASCADE, related_name='ticket_pdfs')
     attendee = models.ForeignKey(Attendee, on_delete=models.CASCADE)
-    pdf_file = models.FileField(upload_to='tickets/')
+    # pdf_file = models.FileField(upload_to='tickets/')
+    pdf_url = models.URLField(max_length=500, null=True, blank=True)
     is_used = models.BooleanField(default=False)
     used_at = models.DateTimeField(null=True, blank=True)
     
