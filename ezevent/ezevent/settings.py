@@ -6,20 +6,14 @@ import dj_database_url
 from datetime import timedelta
 load_dotenv()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 SECRET_KEY = os.getenv('SECRET_KEY')
 
-
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
 ALLOWED_HOSTS = ['127.0.0.1','ezevent-backend.up.railway.app','localhost']
 
 TIME_ZONE = 'Africa/Nairobi'
 USE_TZ = True
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'auths',
@@ -35,7 +29,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt.token_blacklist',
-    
 ]
 
 MIDDLEWARE = [

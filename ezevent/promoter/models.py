@@ -51,5 +51,3 @@ class TicketType(models.Model):
         if not self.pk:  # If creating new ticket type
             self.remaining = self.quantity
         super().save(*args, **kwargs)
-
-

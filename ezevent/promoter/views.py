@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.core.files.base import ContentFile
-from client.models import Purchase, PurchaseAttendee, TicketPDF
+from client.models import Purchase, TicketPDF
 from client.serializers import PurchaseSerializer
 from django.utils import timezone
 import qrcode
@@ -18,13 +18,13 @@ import ast
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from django.core.files.storage import default_storage
-from django.http import HttpResponse
 import qrcode
 import os
 from io import BytesIO
 from ezevent.firebase_config import bucket
-
+from django.core.mail import EmailMessage
+from django.utils.html import format_html
+import requests
 class CreateEventView(generics.CreateAPIView):
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated]
@@ -95,13 +95,6 @@ class DeleteEventView(generics.DestroyAPIView):
     def get_queryset(self):
         return Event.objects.filter(promoter=self.request.user)
 
-# class CreateTicketView(generics.CreateAPIView):
-#     serializer_class = TicketTypeSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def perform_create(self, serializer):
-#         event = Event.objects.get(id=self.kwargs['event_id'], promoter=self.request.user)
-#         serializer.save(event=event)
 
 class CreateTicketView(generics.CreateAPIView):
     serializer_class = TicketTypeSerializer
@@ -345,182 +338,6 @@ class PendingPaymentsListView(generics.ListAPIView):
             payment_screenshot__isnull=False, 
             is_approved_by_promoter=False
         ).order_by('-purchase_date')
-    
-# class PromoterPaymentApprovalView(generics.UpdateAPIView):
-#     """Promoter approves payment and generates PDF ticket with QR code"""
-#     serializer_class = PurchaseSerializer
-#     permission_classes = [IsAuthenticated]
-#     lookup_url_kwarg = 'purchase_id'
-    
-#     def get_queryset(self):
-#         # Only allow promoters to approve payments for their events
-#         return Purchase.objects.filter(ticket_type__event__promoter=self.request.user)
-    
-#     def update(self, request, *args, **kwargs):
-#         purchase = self.get_object()
-#         approve = request.data.get('approve', False)
-        
-#         if not approve:
-#             return Response({
-#                 'status': 'Payment not approved',
-#                 'message': 'You have chosen not to approve this payment'
-#             })
-        
-#         # Approve payment
-#         purchase.is_approved_by_promoter = True
-#         purchase.payment_status = 'completed'
-#         purchase.approval_date = timezone.now()
-#         purchase.save()
-        
-#         # Create temp and tickets directories
-#         temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
-#         tickets_dir = os.path.join(settings.MEDIA_ROOT, 'tickets')
-#         os.makedirs(temp_dir, exist_ok=True)
-#         os.makedirs(tickets_dir, exist_ok=True)
-        
-#         # Get attendees or create a default one if none exist
-#         from client.models import PurchaseAttendee, Attendee
-#         purchase_attendees = PurchaseAttendee.objects.filter(purchase=purchase)
-        
-#         if not purchase_attendees.exists():
-#             # If no attendees were specified, create a default one using purchaser info
-#             default_attendee = Attendee.objects.create(
-#                 first_name="Guest",
-#                 last_name="Attendee",
-#                 email=purchase.purchaser_email,
-#                 phone=purchase.purchaser_phone
-#             )
-#             purchase_attendee = PurchaseAttendee.objects.create(
-#                 purchase=purchase,
-#                 attendee=default_attendee
-#             )
-#             purchase_attendees = [purchase_attendee]
-        
-#         # Store all generated PDFs and their info
-#         ticket_pdfs = []
-        
-#         # Generate a PDF for each attendee
-#         for idx, purchase_attendee in enumerate(purchase_attendees):
-#             attendee = purchase_attendee.attendee
-            
-#             # Generate QR code with attendee-specific info
-#             qr_data = {
-#                 'purchase_id': purchase.id,
-#                 'event': purchase.ticket_type.event.title,
-#                 'ticket_type': purchase.ticket_type.name,
-#                 'attendee_id': attendee.id,
-#                 'attendee_name': f"{attendee.first_name} {attendee.last_name}",
-#                 'attendee_email': attendee.email,
-#                 'approved_by': self.request.user.get_full_name(),
-#                 'approval_date': purchase.approval_date.isoformat(),
-#                 'used': False  # Track if ticket has been used
-#             }
-            
-#             qr = qrcode.QRCode(
-#                 version=1,
-#                 error_correction=qrcode.constants.ERROR_CORRECT_L,
-#                 box_size=10,
-#                 border=4,
-#             )
-#             qr.add_data(str(qr_data))
-#             qr.make(fit=True)
-            
-#             img = qr.make_image(fill_color="black", back_color="white")
-            
-#             # Save QR code to temp directory
-#             temp_qr_path = os.path.join(temp_dir, f'temp_qr_{purchase.id}_{attendee.id}.png')
-#             img.save(temp_qr_path)
-            
-#             # Generate PDF with full path
-#             pdf_filename = f'ticket_{purchase.id}_{attendee.id}.pdf'
-#             pdf_path = os.path.join(tickets_dir, pdf_filename)
-            
-#             # Generate PDF
-#             c = canvas.Canvas(pdf_path, pagesize=letter)
-
-#             # Add event details
-#             c.setFont("Helvetica-Bold", 24)
-#             c.drawCentredString(letter[0]/2, 10*inch, purchase.ticket_type.event.title)
-
-#             c.setFont("Helvetica", 14)
-#             c.drawCentredString(letter[0]/2, 9.5*inch, f"Date: {purchase.ticket_type.event.start_date.strftime('%B %d, %Y')}")
-#             c.drawCentredString(letter[0]/2, 9.2*inch, f"Time: {purchase.ticket_type.event.start_date.strftime('%I:%M %p')} - {purchase.ticket_type.event.end_date.strftime('%I:%M %p')}")
-#             c.drawCentredString(letter[0]/2, 8.9*inch, f"Location: {purchase.ticket_type.event.location}")
-
-#             # Add ticket information
-#             c.setFont("Helvetica-Bold", 16)
-#             c.drawCentredString(letter[0]/2, 8*inch, f"Ticket: {purchase.ticket_type.name}")
-
-#             # Only include essential attendee info
-#             c.setFont("Helvetica", 12)
-#             c.drawCentredString(letter[0]/2, 7.5*inch, f"Purchase Date: {purchase.purchase_date.strftime('%B %d, %Y')}")
-
-#             # Add QR code (larger size)
-#             c.drawImage(temp_qr_path, letter[0]/2 - 2*inch, 3.5*inch, width=4*inch, height=4*inch)
-
-#             c.setFont("Helvetica", 10)
-#             c.drawCentredString(letter[0]/2, 2.5*inch, "Please present this QR code at the event entrance")
-
-#             # Add footer
-#             c.setFont("Helvetica", 8)
-#             c.drawCentredString(letter[0]/2, 1*inch, "This ticket is valid only for the named event and date.")
-#             c.drawCentredString(letter[0]/2, 0.8*inch, f"This ticket is for one person only and is non-transferable.")
-
-#             c.save()
-            
-#             # Store the PDF information, to be saved to a related model later
-#             ticket_info = {
-#                 'attendee_id': attendee.id,
-#                 'attendee_name': f"{attendee.first_name} {attendee.last_name}",
-#                 'attendee_email': attendee.email,
-#                 'filename': pdf_filename,
-#                 'path': pdf_path
-#             }
-#             ticket_pdfs.append(ticket_info)
-            
-#             # Clean up QR code
-#             try:
-#                 os.remove(temp_qr_path)
-#             except:
-#                 pass
-        
-#         # Saving PDFs as attachments
-        
-#         for ticket_info in ticket_pdfs:
-#             with open(ticket_info['path'], 'rb') as f:
-#                 pdf_content = f.read()
-
-#                 TicketPDF.objects.create(
-#                     purchase_id=purchase.id,
-#                     attendee_id=ticket_info['attendee_id'],
-#                     pdf_file=ContentFile(pdf_content, name=ticket_info['filename']),
-#                     is_used=False
-#                 )
-#                 if idx == 0: 
-#                     purchase.ticket_pdf = ContentFile(pdf_content, name=ticket_info['filename'])
-#                     purchase.save()
-                
-#                 # Clean up the PDF file
-#                 try:
-#                     os.remove(ticket_info['path'])
-#                 except:
-#                     pass
-        
-#         # Prepare response with all ticket URLs
-#         response_data = {
-#             'status': 'Payment approved',
-#             'message': f'PDF tickets have been generated for {len(ticket_pdfs)} attendees',
-#             'ticket_pdf_url': purchase.ticket_pdf.url if purchase.ticket_pdf else None,
-#             'attendees': []
-#         }
-        
-#         for ticket_info in ticket_pdfs:
-#             response_data['attendees'].append({
-#                 'name': ticket_info['attendee_name'],
-#                 'email': ticket_info['attendee_email']
-#             })
-
-#         return Response(response_data)
 
 class PromoterPaymentApprovalView(generics.UpdateAPIView):
     """Promoter approves payment and generates PDF ticket with QR code"""
@@ -529,7 +346,6 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
     lookup_url_kwarg = 'purchase_id'
     
     def get_queryset(self):
-        # Only allow promoters to approve payments for their events
         return Purchase.objects.filter(ticket_type__event__promoter=self.request.user)
     
     def update(self, request, *args, **kwargs):
@@ -542,13 +358,13 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
                 'message': 'You have chosen not to approve this payment'
             })
         
-        # Approve payment
+        # Approving payment
         purchase.is_approved_by_promoter = True
         purchase.payment_status = 'completed'
         purchase.approval_date = timezone.now()
         purchase.save()
         
-        # Create temp directory for QR codes
+        # Creating a temp directory for QR codes
         temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
         os.makedirs(temp_dir, exist_ok=True)
         
@@ -570,14 +386,14 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
             )
             purchase_attendees = [purchase_attendee]
         
-        # Store all generated PDFs and their info
+        # Storing all generated PDFs and their info
         ticket_pdfs = []
         
-        # Generate a PDF for each attendee
+        # Generating a PDF for each attendee
         for idx, purchase_attendee in enumerate(purchase_attendees):
             attendee = purchase_attendee.attendee
             
-            # Generate QR code with attendee-specific info
+            # Generating QR code with attendee-specific info
             qr_data = {
                 'purchase_id': purchase.id,
                 'event': purchase.ticket_type.event.title,
@@ -587,7 +403,7 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
                 'attendee_email': attendee.email,
                 'approved_by': self.request.user.get_full_name(),
                 'approval_date': purchase.approval_date.isoformat(),
-                'used': False  # Track if ticket has been used
+                'used': False  
             }
             
             qr = qrcode.QRCode(
@@ -601,18 +417,17 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
             
             img = qr.make_image(fill_color="black", back_color="white")
             
-            # Save QR code to temp directory
+            # Saving QR code to temp directory
             temp_qr_path = os.path.join(temp_dir, f'temp_qr_{purchase.id}_{attendee.id}.png')
             img.save(temp_qr_path)
             
-            # Generate PDF filename
+            # Generating PDF filename
             pdf_filename = f'ticket_{purchase.id}_{attendee.id}.pdf'
             
-            # Generate PDF in memory
+            # Generating PDF in memory
             pdf_buffer = BytesIO()
             c = canvas.Canvas(pdf_buffer, pagesize=letter)
 
-            # Add event details
             c.setFont("Helvetica-Bold", 24)
             c.drawCentredString(letter[0]/2, 10*inch, purchase.ticket_type.event.title)
 
@@ -621,41 +436,36 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
             c.drawCentredString(letter[0]/2, 9.2*inch, f"Time: {purchase.ticket_type.event.start_date.strftime('%I:%M %p')} - {purchase.ticket_type.event.end_date.strftime('%I:%M %p')}")
             c.drawCentredString(letter[0]/2, 8.9*inch, f"Location: {purchase.ticket_type.event.location}")
 
-            # Add ticket information
+            # Adding ticket information
             c.setFont("Helvetica-Bold", 16)
             c.drawCentredString(letter[0]/2, 8*inch, f"Ticket: {purchase.ticket_type.name}")
 
-            # Only include essential attendee info
             c.setFont("Helvetica", 12)
             c.drawCentredString(letter[0]/2, 7.5*inch, f"Purchase Date: {purchase.purchase_date.strftime('%B %d, %Y')}")
 
-            # Add QR code (larger size)
             c.drawImage(temp_qr_path, letter[0]/2 - 2*inch, 3.5*inch, width=4*inch, height=4*inch)
 
             c.setFont("Helvetica", 10)
             c.drawCentredString(letter[0]/2, 2.5*inch, "Please present this QR code at the event entrance")
 
-            # Add footer
             c.setFont("Helvetica", 8)
             c.drawCentredString(letter[0]/2, 1*inch, "This ticket is valid only for the named event and date.")
             c.drawCentredString(letter[0]/2, 0.8*inch, f"This ticket is for one person only and is non-transferable.")
 
             c.save()
             
-            # Get PDF content from buffer
             pdf_buffer.seek(0)
             pdf_content = pdf_buffer.getvalue()
             
-            # Upload to Firebase Storage
+            # Uploading to Firebase Storage
             firebase_path = f'tickets/{pdf_filename}'
             blob = bucket.blob(firebase_path)
             blob.upload_from_string(pdf_content, content_type='application/pdf')
             
-            # Make the file publicly accessible
+            # Making the file publicly accessible
             blob.make_public()
             pdf_url = blob.public_url
             
-            # Store the PDF information
             ticket_info = {
                 'attendee_id': attendee.id,
                 'attendee_name': f"{attendee.first_name} {attendee.last_name}",
@@ -665,13 +475,12 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
             }
             ticket_pdfs.append(ticket_info)
             
-            # Clean up QR code temp file
+            # Cleaning up QR code temp file
             try:
                 os.remove(temp_qr_path)
             except:
                 pass
         
-        # Saving Firebase URLs to database
         for idx, ticket_info in enumerate(ticket_pdfs):
             TicketPDF.objects.create(
                 purchase_id=purchase.id,
@@ -684,7 +493,7 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
                 purchase.ticket_pdf_url = ticket_info['firebase_url']
                 purchase.save()
         
-        # Prepare response with all ticket URLs
+        # Preparing response with all ticket URLs
         response_data = {
             'status': 'Payment approved',
             'message': f'PDF tickets have been generated for {len(ticket_pdfs)} attendees',
@@ -701,9 +510,71 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
 
         return Response(response_data)
 
+
+def send_payment_approval_email(purchase, ticket_pdfs):
+    event = purchase.ticket_type.event
+    subject = f'Payment Approved for {event.title}'
+    
+    attendee_tickets_html = ""
+    for ticket_info in ticket_pdfs:
+        attendee_tickets_html += format_html("""
+            <p><strong>{name}:</strong> <a href="{ticket_url}" 
+            style="display: inline-block; padding: 10px 20px; color: white; background-color: #007bff; 
+            text-decoration: none; border-radius: 5px;">Download Ticket</a></p>
+        """, name=ticket_info['attendee_name'], ticket_url=ticket_info['firebase_url'])
+    
+    message = format_html("""
+        <html>
+        <body>
+            <p>Hello {customer_name},</p>
+            
+            <p>Great news! Your payment for <strong>{event_title}</strong> has been approved. Your tickets are now ready.</p>
+            
+            <h2>Event Details</h2>
+            <p><strong>Event:</strong> {event_title}</p>
+            <p><strong>Date:</strong> {event_date}</p>
+            <p><strong>Time:</strong> {event_time}</p>
+            <p><strong>Location:</strong> {event_location}</p>
+            <p><strong>Ticket Type:</strong> {ticket_type}</p>
+            <p><strong>Number of Tickets:</strong> {ticket_count}</p>
+            
+            <h2>Your Tickets</h2>
+            <p>You can access your tickets using the links below:</p>
+            
+            {attendee_tickets}
+            
+            <p>Please present these tickets (either printed or on your mobile device) at the event entrance.</p>
+            
+            <p>Thank you for your purchase. We look forward to seeing you at the event!</p>
+            <p>If you have any questions, please contact our support team.</p>
+            
+            <p>Best regards,<br>The Ezevent Team</p>
+        </body>
+        </html>
+    """, 
+    customer_name=purchase.purchaser_name if hasattr(purchase, 'purchaser_name') else "Customer",
+    event_title=event.title,
+    event_date=event.start_date.strftime('%B %d, %Y'),
+    event_time=f"{event.start_date.strftime('%I:%M %p')} - {event.end_date.strftime('%I:%M %p')}",
+    event_location=event.location,
+    ticket_type=purchase.ticket_type.name,
+    ticket_count=len(ticket_pdfs),
+    attendee_tickets=attendee_tickets_html)
+    
+    email_message = EmailMessage(subject, message, settings.DEFAULT_FROM_EMAIL, [purchase.purchaser_email])
+    email_message.content_subtype = 'html'
+    
+    # Attaching PDF tickets to the email
+    for ticket_info in ticket_pdfs:
+        pdf_response = requests.get(ticket_info['firebase_url'])
+        if pdf_response.status_code == 200:
+            filename = f"Ticket - {event.title} - {ticket_info['attendee_name']}.pdf"
+            email_message.attach(filename, pdf_response.content, 'application/pdf')
+    
+    email_message.send(fail_silently=False)
+
 class ScanTicketView(APIView):
-    """Scanning and validating a ticket"""
-    # permission_classes = [IsAuthenticated] 
+    """Scanning and validating a ticket""" 
     
     def post(self, request, format=None):
         try:
@@ -719,7 +590,7 @@ class ScanTicketView(APIView):
             attendee_id = ticket_info.get('attendee_id')
             
             #finding the ticket
-            from client.models import TicketPDF, Purchase
+            
             try:
                 ticket = TicketPDF.objects.get(
                     purchase_id=purchase_id,
@@ -766,6 +637,87 @@ class ScanTicketView(APIView):
                 },
                 'ticket_type': ticket.purchase.ticket_type.name,
                 'scanned_at': ticket.used_at
+            })
+            
+        except Exception as e:
+            return Response({
+                'valid': False,
+                'error': f'Invalid QR code data: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class ScanTicketExitView(APIView):
+    """Scanning and validating a ticket for exit"""
+    
+    def post(self, request, format=None):
+        try:
+            qr_data = request.data.get('qr_data')
+            if not qr_data:
+                return Response({'error': 'QR data is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            ticket_info = ast.literal_eval(qr_data)
+            
+            purchase_id = ticket_info.get('purchase_id')
+            attendee_id = ticket_info.get('attendee_id')
+            
+            try:
+                ticket = TicketPDF.objects.get(
+                    purchase_id=purchase_id,
+                    attendee_id=attendee_id
+                )
+            except TicketPDF.DoesNotExist:
+                return Response({
+                    'valid': False,
+                    'error': 'Ticket not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Checking if the ticket has been used for entry
+            if not ticket.is_used:
+                return Response({
+                    'valid': False,
+                    'error': 'Ticket has not been used for entry yet'
+                })
+            
+            # Checking if the ticket has already been used for exit
+            if ticket.exit_time:
+                return Response({
+                    'valid': False,
+                    'error': 'Ticket has already been used for exit',
+                    'exit_time': ticket.exit_time
+                })
+            
+            # Checking if the event is still valid
+            event = ticket.purchase.ticket_type.event
+            if event.end_date < timezone.now():
+                # For exit, we can still allow after event end, but we'll log it
+                pass
+            
+            # Recording exit time
+            ticket.exit_time = timezone.now()
+            
+            # Calculate and store time spent
+            ticket.time_spent = ticket.exit_time - ticket.used_at
+            ticket.save()
+            
+            hours, remainder = divmod(ticket.time_spent.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            time_spent_str = f"{int(hours)}h {int(minutes)}m"
+            
+            # Returning success response
+            return Response({
+                'valid': True,
+                'attendee': {
+                    'name': f"{ticket.attendee.first_name} {ticket.attendee.last_name}",
+                    'email': ticket.attendee.email
+                },
+                'event': {
+                    'title': event.title,
+                    'location': event.location,
+                    'start_date': event.start_date
+                },
+                'ticket_type': ticket.purchase.ticket_type.name,
+                'entry_time': ticket.used_at,
+                'exit_time': ticket.exit_time,
+                'time_spent': time_spent_str
             })
             
         except Exception as e:
