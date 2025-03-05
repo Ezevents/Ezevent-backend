@@ -24,4 +24,5 @@ urlpatterns = [
     path('pending_payments', views.PendingPaymentsListView.as_view(), name='pending_payments'),
     path('purchase/<int:purchase_id>/approve', views.PromoterPaymentApprovalView.as_view(), name='approve_payment'),
     path('scan_ticket', views.ScanTicketView.as_view(), name='scan_ticket'),
+    path('scan-exit', views.ScanTicketExitView.as_view(), name='scan-ticket-exit')
 ]

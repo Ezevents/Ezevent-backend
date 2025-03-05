@@ -1,8 +1,20 @@
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import generics, status
+from django.core.files.uploadedfile import InMemoryUploadedFile
+import os
+import uuid
+from datetime import datetime
+from firebase_admin import storage
 import jwt
 import random
 import string
+import os
+import uuid
+from datetime import datetime
+from firebase_admin import storage
+
 from django.utils.timezone import now
 from django.middleware import csrf
 from django.http import JsonResponse
@@ -34,7 +46,6 @@ class GenerateSignupTokenView(APIView):
     permission_classes = [IsAdminOrHasRole]
     allowed_roles = ['admin']
 
-    # @method_decorator(csrf_exempt)
     def dispatch(self, *args, **kwargs):
         return super().dispatch(*args, **kwargs)
 
@@ -51,7 +62,6 @@ class GenerateSignupTokenView(APIView):
         if not role:
             return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Generate a 6-digit token
         token = ''.join(random.choices(string.digits, k=6))
         expires_at = timezone.now() + timedelta(hours=24)
 
@@ -87,14 +97,11 @@ def signup_with_token(request):
     if serializer.is_valid():
         user = serializer.save()
 
-        #Assigning the role to the user
         UserRole.objects.create(user=user, role=signup_token.role)
 
-        # Marking the token as used
         signup_token.used = True
         signup_token.save()
 
-        # Preparing a response that includes a success message
         return Response({
             'success': True,
             'message': 'User signed up successfully.'
@@ -123,7 +130,6 @@ def signup_clients(request):
     return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 def get_user_tokens(user, role_name):
-    # Creating the JWT tokens (access and refresh tokens)
     refresh = RefreshToken.for_user(user)
     access_token = refresh.access_token
 
@@ -137,13 +143,11 @@ def get_user_tokens(user, role_name):
 @authentication_classes([]) 
 @permission_classes([])    
 def login(request):
-    # finding the user by email
     user = get_object_or_404(Users, email=request.data['email'])
 
     if user.is_suspended:
         return Response({'detail': 'Your account is suspended. Contact support.'}, status=status.HTTP_403_FORBIDDEN)
     
-    #checking if the password is correct
     if not user.check_password(request.data['password']):
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -160,10 +164,8 @@ def login(request):
         'role': role_name
     }
 
-    # Creating a JSON response
     response = JsonResponse(response_data, status=status.HTTP_200_OK)
 
-    # Setting access token cookie
     response.set_cookie(
         key=settings.SIMPLE_JWT["AUTH_COOKIE"],
         value=tokens["access_token"],
@@ -173,7 +175,6 @@ def login(request):
         samesite=settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"]
     )
 
-    #setting a refresh token cookie
     response.set_cookie(
         key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
         value=tokens["refresh_token"],
@@ -201,33 +202,29 @@ def login(request):
 def test_token(request):
    return Response(f"{request.user.email} is authenticated")
 
-## forgot paswsword view
 def forgot_password_token(email):
     """Generate a JWT token for password reset"""
     payload = {
         'email': email,
         'exp': datetime.utcnow() + timedelta(hours=1), 
-        'iat': datetime.utcnow()  # Issued at
+        'iat': datetime.utcnow() 
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
     return token
 
 @api_view(['POST'])
-@authentication_classes([])  # Public endpoint
-@permission_classes([])  # No permission required
+@authentication_classes([])  
+@permission_classes([]) 
 def send_forgot_password_email(request):
     """Sends a password reset email with a token link"""
     email = request.data.get('email')
 
-    # Check if the user exists
     user = Users.objects.filter(email=email).first()
     if not user:
         return Response({"error": "User with this email does not exist."}, status=400)
 
-    # Generate a token
     token = forgot_password_token(email)
 
-    # Composing the email message
     subject = 'Forgot Password - Ezevents'
     reset_url = f"http://127.0.0.1:5501/Public/resetPassword.html?token={token}"
     message = format_html(f"""
@@ -256,14 +253,12 @@ def send_forgot_password_email(request):
     </html>
     """)
 
-    # Send the email
     email_message = EmailMessage(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
-    email_message.content_subtype = 'html'  # Ensure the email is sent as HTML
+    email_message.content_subtype = 'html'
     email_message.send(fail_silently=False)
 
     return Response({"message": "Password reset email has been sent."}, status=200)
 
-## forgot paswsword view
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([])
@@ -272,16 +267,13 @@ def update_password(request):
     new_password = request.data.get('new_password')
     
     try:
-        # Decode the token
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
         email = payload['email']
         
-        # Retrieve the user
         user = Users.objects.filter(email=email).first()
         if user is None:
             return Response({"error": "Invalid token or user does not exist."}, status=400)
         
-        # Update the user's password
         user.set_password(new_password)
         user.save()
         
@@ -293,40 +285,33 @@ def update_password(request):
 
 
 @api_view(['POST'])
-@authentication_classes([])  # Allow this view to be accessed without authentication
-@permission_classes([])      # No permission needed for logout
+@authentication_classes([])  
+@permission_classes([])    
 def logout(request):
     try:
-        # Get the refresh token from cookies
         refresh_token = request.COOKIES.get(settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH'])
         
         if not refresh_token:
             raise rest_exceptions.AuthenticationFailed("Refresh token not found in cookies.")
         
-        # Blacklist the refresh token
         token = RefreshToken(refresh_token)
         token.blacklist()
 
-        # Create a response to delete cookies
         res = response.Response({'detail': 'Successfully logged out'}, status=status.HTTP_200_OK)
 
-        # Clear all related cookies
         res.delete_cookie(settings.SIMPLE_JWT['AUTH_COOKIE'])
         res.delete_cookie(settings.SIMPLE_JWT['AUTH_COOKIE_REFRESH'])
         res.delete_cookie("csrftoken")
         res.delete_cookie("X-CSRFToken")
 
-        # Explicitly set CSRF header to None
         res["X-CSRFToken"] = None
         
         return res
 
     except TokenError as e:
-        # Handle errors related to token processing (e.g., invalid token)
         return response.Response({'detail': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
-        # Handle other errors
         return response.Response({'detail': 'An error occurred: {}'.format(str(e))}, status=status.HTTP_400_BAD_REQUEST)
     
 class CookieTokenRefreshSerializer(jwt_serializers.TokenRefreshSerializer):
@@ -357,3 +342,61 @@ class CookieTokenRefreshView(jwt_views.TokenRefreshView):
             del response.data["refresh"]
         response["X-CSRFToken"] = request.COOKIES.get("csrftoken")
         return super().finalize_response(request, response, *args, **kwargs)
+
+class UserProfileUpdateView(generics.UpdateAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+    
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+        profile_pic_file = request.FILES.get('profile_pic')
+        
+        data = request.data.copy()
+        
+        if profile_pic_file:
+            try:
+                file_content = profile_pic_file.read()
+                file_name = profile_pic_file.name
+                file_ext = os.path.splitext(file_name)[1]
+                
+                timestamp = int(datetime.now().timestamp() * 1000)
+                unique_filename = f"{timestamp}_{uuid.uuid4().hex}{file_ext}"
+                
+                firebase_path = f"profilePics/{unique_filename}"
+                bucket = storage.bucket()
+                blob = bucket.blob(firebase_path)
+                
+                blob.upload_from_string(
+                    file_content,
+                    content_type=profile_pic_file.content_type
+                )
+                
+                blob.make_public()
+                profile_pic_url = blob.public_url
+                
+                data['profile_pic'] = profile_pic_url
+                
+            except Exception as e:
+                return Response(
+                    {"error": f"Failed to upload profile picture: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        serializer = self.get_serializer(user, data=data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "status": "success",
+                "message": "Profile updated successfully",
+                "user": serializer.data
+            })
+        
+        return Response({
+            "status": "error",
+            "message": "Failed to update profile",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    

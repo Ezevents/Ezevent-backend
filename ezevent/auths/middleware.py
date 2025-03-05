@@ -21,7 +21,8 @@ class JWTAuthenticationMiddleware(MiddlewareMixin):
         '/auth/forgotPassword', 
         '/auth/updatepassword',
         '/api/google-oauth2/login/raw/redirect/',
-        '/api/google-oauth2/login/raw/callback/'
+        '/api/google-oauth2/login/raw/callback/',
+        '/auth/update_profile'
     ]
 
     ADMIN_URL_PREFIX = '/admin/'
@@ -44,14 +45,10 @@ class JWTAuthenticationMiddleware(MiddlewareMixin):
             user = Users.objects.get(id=payload['user_id'])
             request.user = user
             request.user_role = payload.get('role', None)
-        # Debugging output
-            print(f"User: {user.email}, Role: {request.user_role}")
 
-            # Admin restriction logic
             if path.startswith(self.ADMIN_URL_PREFIX) and not (
                 user.is_superuser or self.user_has_admin_role(user)
             ):
-                print("Access denied: User is not an admin")
                 return JsonResponse({'error': 'Forbidden: Admin access only'}, status=403)
         
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Users.DoesNotExist) as e:
@@ -69,9 +66,9 @@ class CustomCSRFMiddleware(MiddlewareMixin):
     def process_view(self, request, callback, callback_args, callback_kwargs):
         try:
             resolved = resolve(request.path_info)
-            print(f"Processing view: {resolved.func.__name__}")  # Print function name
-            print(f"Full path: {resolved.view_name}")           # Print full path
-            print(f"URL pattern: {resolved.url_name}")          # Print URL pattern
+            print(f"Processing view: {resolved.func.__name__}")  
+            print(f"Full path: {resolved.view_name}")          
+            print(f"URL pattern: {resolved.url_name}")          
         except Exception as e:
             print(f"Resolution error: {e}")
 
