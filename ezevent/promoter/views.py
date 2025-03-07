@@ -13,7 +13,7 @@ from django.core.files.base import ContentFile
 from client.models import Purchase, TicketPDF
 from client.serializers import PurchaseSerializer
 from django.utils import timezone
-import qrcode
+import jwt
 import ast
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -25,6 +25,10 @@ from ezevent.firebase_config import bucket
 from django.core.mail import EmailMessage
 from django.utils.html import format_html
 import requests
+import datetime
+
+import logging
+logger = logging.getLogger(__name__)
 class CreateEventView(generics.CreateAPIView):
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated]
@@ -508,6 +512,8 @@ class PromoterPaymentApprovalView(generics.UpdateAPIView):
                 'ticket_url': ticket_info['firebase_url']
             })
 
+        send_payment_approval_email(purchase, ticket_pdfs)
+
         return Response(response_data)
 
 
@@ -539,9 +545,8 @@ def send_payment_approval_email(purchase, ticket_pdfs):
             <p><strong>Number of Tickets:</strong> {ticket_count}</p>
             
             <h2>Your Tickets</h2>
-            <p>You can access your tickets using the links below:</p>
-            
-            {attendee_tickets}
+                          
+            <p>You can access your tickets in the attachments section below</p>
             
             <p>Please present these tickets (either printed or on your mobile device) at the event entrance.</p>
             
@@ -575,32 +580,41 @@ def send_payment_approval_email(purchase, ticket_pdfs):
 
 class ScanTicketView(APIView):
     """Scanning and validating a ticket""" 
+    permission_classes = []  
+    authentication_classes = []
     
     def post(self, request, format=None):
+        scanner_id = getattr(request, 'scanner_user_id', None)
         try:
-            #getting the QR data from the request
+            # Getting the QR data from the request
             qr_data = request.data.get('qr_data')
             if not qr_data:
                 return Response({'error': 'QR data is required'}, status=status.HTTP_400_BAD_REQUEST)
             
             ticket_info = ast.literal_eval(qr_data)
             
-            # extracting ticket information
+            # Extracting ticket information
             purchase_id = ticket_info.get('purchase_id')
             attendee_id = ticket_info.get('attendee_id')
             
-            #finding the ticket
+            # Finding the ticket - using filter instead of get to handle potential duplicates
+            tickets = TicketPDF.objects.filter(
+                purchase_id=purchase_id,
+                attendee_id=attendee_id
+            )
             
-            try:
-                ticket = TicketPDF.objects.get(
-                    purchase_id=purchase_id,
-                    attendee_id=attendee_id
-                )
-            except TicketPDF.DoesNotExist:
+            if not tickets.exists():
                 return Response({
                     'valid': False,
                     'error': 'Ticket not found'
                 }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Use the first ticket if multiple exist
+            if tickets.count() > 1:
+                # Log this issue for investigation
+                logger.warning(f"Duplicate tickets found: {purchase_id}, {attendee_id}")
+                
+            ticket = tickets.first()
             
             # Checking if ticket is already used
             if ticket.is_used:
@@ -618,12 +632,13 @@ class ScanTicketView(APIView):
                     'error': 'Event has already ended'
                 })
             
-            #marking ticket as used
+            # Marking ticket as used
+            ticket.scanned_by = scanner_id
             ticket.is_used = True
             ticket.used_at = timezone.now()
             ticket.save()
             
-            #returning success response
+            # Returning success response
             return Response({
                 'valid': True,
                 'attendee': {
@@ -647,8 +662,11 @@ class ScanTicketView(APIView):
 
 class ScanTicketExitView(APIView):
     """Scanning and validating a ticket for exit"""
+    permission_classes = []  
+    authentication_classes = []
     
     def post(self, request, format=None):
+        scanner_id = getattr(request, 'scanner_user_id', None)
         try:
             qr_data = request.data.get('qr_data')
             if not qr_data:
@@ -659,42 +677,43 @@ class ScanTicketExitView(APIView):
             purchase_id = ticket_info.get('purchase_id')
             attendee_id = ticket_info.get('attendee_id')
             
-            try:
-                ticket = TicketPDF.objects.get(
-                    purchase_id=purchase_id,
-                    attendee_id=attendee_id
-                )
-            except TicketPDF.DoesNotExist:
+            tickets = TicketPDF.objects.filter(
+                purchase_id=purchase_id,
+                attendee_id=attendee_id
+            )
+            
+            if not tickets.exists():
                 return Response({
                     'valid': False,
                     'error': 'Ticket not found'
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Checking if the ticket has been used for entry
+            
+            if tickets.count() > 1:
+                logger.warning(f"Duplicate tickets found for exit: {purchase_id}, {attendee_id}")
+                
+            ticket = tickets.first()
+            
             if not ticket.is_used:
                 return Response({
                     'valid': False,
                     'error': 'Ticket has not been used for entry yet'
                 })
             
-            # Checking if the ticket has already been used for exit
             if ticket.exit_time:
                 return Response({
                     'valid': False,
                     'error': 'Ticket has already been used for exit',
                     'exit_time': ticket.exit_time
                 })
-            
-            # Checking if the event is still valid
+        
             event = ticket.purchase.ticket_type.event
             if event.end_date < timezone.now():
-                # For exit, we can still allow after event end, but we'll log it
-                pass
-            
-            # Recording exit time
+                logger.info(f"Exit after event end for ticket: {purchase_id}, {attendee_id}")
+        
+            ticket.exit_scanned_by = scanner_id
             ticket.exit_time = timezone.now()
             
-            # Calculate and store time spent
             ticket.time_spent = ticket.exit_time - ticket.used_at
             ticket.save()
             
@@ -702,7 +721,6 @@ class ScanTicketExitView(APIView):
             minutes, seconds = divmod(remainder, 60)
             time_spent_str = f"{int(hours)}h {int(minutes)}m"
             
-            # Returning success response
             return Response({
                 'valid': True,
                 'attendee': {
@@ -725,3 +743,35 @@ class ScanTicketExitView(APIView):
                 'valid': False,
                 'error': f'Invalid QR code data: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+
+
+def generate_scanner_url(user_id, expiry_hours=24):
+    """Generating a JWT-secured URL for ticket scanning that expires after specified hours"""
+    
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours),
+        'iat': datetime.datetime.utcnow(),
+        'purpose': 'ticket_scanning'
+    }
+    
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+    
+    # Frontend URLs
+    entry_url = f"http://frontend/scan?token={token}"
+    exit_url = f"http://frontend/scan-exit?token={token}"
+    
+    return {
+        'entry_url': entry_url,
+        'exit_url': exit_url,
+        'expires_at': payload['exp']
+    }
+
+class GenerateScannerUrlView(APIView):
+    permission_classes = [IsAuthenticated]  
+    
+    def post(self, request):
+        user_id = request.user.id
+        
+        urls = generate_scanner_url(user_id)
+        return Response(urls)
