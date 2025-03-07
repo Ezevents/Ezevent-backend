@@ -8,7 +8,8 @@ from django.urls import resolve
 class JWTAuthenticationMiddleware(MiddlewareMixin):
     EXEMPT_URLS = [
         '/api/token/refresh/',
-        '/token/',
+        '/promoter/scan_ticket',
+        '/promoter/scan_exit',
         '/api/refresh/',
         '/auth/logout',
         '/auth/login',
@@ -22,7 +23,7 @@ class JWTAuthenticationMiddleware(MiddlewareMixin):
         '/auth/updatepassword',
         '/api/google-oauth2/login/raw/redirect/',
         '/api/google-oauth2/login/raw/callback/',
-        '/auth/update_profile'
+        '/auth/update_profile',
     ]
 
     ADMIN_URL_PREFIX = '/admin/'

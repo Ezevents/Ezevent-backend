@@ -24,5 +24,6 @@ urlpatterns = [
     path('pending_payments', views.PendingPaymentsListView.as_view(), name='pending_payments'),
     path('purchase/<int:purchase_id>/approve', views.PromoterPaymentApprovalView.as_view(), name='approve_payment'),
     path('scan_ticket', views.ScanTicketView.as_view(), name='scan_ticket'),
-    path('scan-exit', views.ScanTicketExitView.as_view(), name='scan-ticket-exit')
+    path('scan_exit', views.ScanTicketExitView.as_view(), name='scan_ticket_exit'),
+    path('generate_scanner_url', views.GenerateScannerUrlView.as_view(), name='generate_scanner_url'),
 ]

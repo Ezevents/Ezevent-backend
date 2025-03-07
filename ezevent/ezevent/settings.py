@@ -42,6 +42,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'auths.middleware.JWTAuthenticationMiddleware',
+    'promoter.middleware.ScannerTokenMiddleware'
 ]
 
 ROOT_URLCONF = 'ezevent.urls'
