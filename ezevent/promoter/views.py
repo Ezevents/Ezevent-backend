@@ -25,7 +25,7 @@ from ezevent.firebase_config import bucket
 from django.core.mail import EmailMessage
 from django.utils.html import format_html
 import requests
-import datetime
+# import datetime
 
 import logging
 logger = logging.getLogger(__name__)
@@ -242,7 +242,7 @@ class BulkCreateTicketsView(generics.CreateAPIView):
 
 class EventAnalyticsView(APIView):
     permission_classes = [IsAuthenticated]
-
+    
     def get(self, request):
         # Get date range from query params or default to last 30 days
         end_date = datetime.now()
@@ -747,7 +747,7 @@ class ScanTicketExitView(APIView):
 
 def generate_scanner_url(user_id, expiry_hours=24):
     """Generating a JWT-secured URL for ticket scanning that expires after specified hours"""
-    
+    import datetime
     payload = {
         'user_id': user_id,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours),
