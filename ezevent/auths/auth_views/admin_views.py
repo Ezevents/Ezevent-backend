@@ -79,7 +79,7 @@ def send_signup_token_email(email, token, role_name):
                             <p>You can sign up as a <strong>{role_name}</strong> by clicking the button below:</p>
                             
                             <p>
-                                <a href="https://billsblusters.netlify.app/public/signup.html?token={token}" 
+                                <a href="https://ez-event.vercel.app/promoter-signup?token={token}" 
                                 style="display: inline-block; padding: 10px 20px; color: white; background-color: #007bff; 
                                         text-decoration: none; border-radius: 5px;">
                                     Complete Your Registration
@@ -88,7 +88,7 @@ def send_signup_token_email(email, token, role_name):
                             
                             <p>If the button doesn't work, use this link:</p>
                             
-                            <p><a href="https://billsblusters.netlify.app/public/signup.html?token={token}">https://billsblusters.netlify.app/public/signup.html?token={token}</a></p>
+                            <p><a href="https://ez-event.vercel.app/promoter-signup?token={token}">https://ez-event.vercel.app/promoter-signup?token={token}</a></p>
                             
                             <p>If you did not request this, please ignore this email.</p>
                             

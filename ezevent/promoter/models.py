@@ -11,6 +11,7 @@ class Event(models.Model):
     ]
     
     promoter = models.ForeignKey(Users, on_delete=models.CASCADE, related_name='events')
+    profile_pic = models.CharField(max_length=500, default="https://firebasestorage.googleapis.com/v0/b/happy-hoe.appspot.com/o/dev%2FprofilePic%2F1724404221671_default-user-profile.png?alt=media&token=0793e28f-0230-46ef-abc0-2ea73ebd6fd4", null=True)
     title = models.CharField(max_length=200)
     description = models.TextField()
     location = models.CharField(max_length=200)

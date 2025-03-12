@@ -20,6 +20,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 import qrcode
 import os
+import uuid
 from io import BytesIO
 from ezevent.firebase_config import bucket
 from django.core.mail import EmailMessage
@@ -32,6 +33,48 @@ logger = logging.getLogger(__name__)
 class CreateEventView(generics.CreateAPIView):
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        event_image = request.FILES.get('image')
+        
+        data = request.data.copy()
+        
+        if event_image:
+            try:
+                file_content = event_image.read()
+                file_name = event_image.name
+                file_ext = os.path.splitext(file_name)[1]
+
+                timestamp = int(datetime.now().timestamp() * 1000)
+                unique_filename = f"{timestamp}_{uuid.uuid4().hex}{file_ext}"
+
+                firebase_path = f"event_images/{unique_filename}"
+                blob = bucket.blob(firebase_path)
+                
+                blob.upload_from_string(
+                    file_content,
+                    content_type=event_image.content_type
+                )
+                
+                blob.make_public()
+                image_url = blob.public_url
+                
+                data['profile_pic'] = image_url
+
+                if 'image' in data:
+                    data.pop('image')
+                
+            except Exception as e:
+                return Response(
+                    {"error": f"Failed to upload event image: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         serializer.save(promoter=self.request.user)
@@ -578,6 +621,37 @@ def send_payment_approval_email(purchase, ticket_pdfs):
     
     email_message.send(fail_silently=False)
 
+def generate_scanner_url(user_id, expiry_hours=24):
+    """Generating a JWT-secured URL for ticket scanning that expires after specified hours"""
+    import datetime
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours),
+        'iat': datetime.datetime.utcnow(),
+        'purpose': 'ticket_scanning'
+    }
+    
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+    
+    # Frontend URLs
+    entry_url = f"https://ez-event.vercel.app/scan?token={token}"
+    exit_url = f"https://ez-event.vercel.app/scan-exit?token={token}"
+    
+    return {
+        'entry_url': entry_url,
+        'exit_url': exit_url,
+        'expires_at': payload['exp']
+    }
+
+class GenerateScannerUrlView(APIView):
+    permission_classes = [IsAuthenticated]  
+    
+    def post(self, request):
+        user_id = request.user.id
+        
+        urls = generate_scanner_url(user_id)
+        return Response(urls)
+
 class ScanTicketView(APIView):
     """Scanning and validating a ticket""" 
     permission_classes = []  
@@ -744,34 +818,63 @@ class ScanTicketExitView(APIView):
                 'error': f'Invalid QR code data: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-
-def generate_scanner_url(user_id, expiry_hours=24):
-    """Generating a JWT-secured URL for ticket scanning that expires after specified hours"""
-    import datetime
-    payload = {
-        'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours),
-        'iat': datetime.datetime.utcnow(),
-        'purpose': 'ticket_scanning'
-    }
+class TicketDetailsView(APIView):
+    """View to get ticket details including entry/exit times"""
+    permission_classes = [IsAuthenticated]
     
-    token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+    def get(self, request, ticket_id=None, format=None):
+        try:
+            if ticket_id:
+                ticket = TicketPDF.objects.get(id=ticket_id)
+                return Response(self._format_ticket_data(ticket))
+            else:
+                event_id = request.query_params.get('event_id')
+                
+                tickets = TicketPDF.objects.all()
+                
+                if event_id:
+                    tickets = tickets.filter(purchase__ticket_type__event_id=event_id)
+                
+                result = [self._format_ticket_data(ticket) for ticket in tickets]
+                return Response(result)
+                
+        except TicketPDF.DoesNotExist:
+            return Response(
+                {'error': 'Ticket not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Error retrieving ticket data: {str(e)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
-    # Frontend URLs
-    entry_url = f"http://frontend/scan?token={token}"
-    exit_url = f"http://frontend/scan-exit?token={token}"
-    
-    return {
-        'entry_url': entry_url,
-        'exit_url': exit_url,
-        'expires_at': payload['exp']
-    }
-
-class GenerateScannerUrlView(APIView):
-    permission_classes = [IsAuthenticated]  
-    
-    def post(self, request):
-        user_id = request.user.id
+    def _format_ticket_data(self, ticket):
+        duration = None
+        duration_str = "N/A"
         
-        urls = generate_scanner_url(user_id)
-        return Response(urls)
+        if ticket.is_used and ticket.exit_time:
+            duration = ticket.exit_time - ticket.used_at
+            hours, remainder = divmod(duration.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            duration_str = f"{int(hours)}h {int(minutes)}m"
+        
+        event = ticket.purchase.ticket_type.event
+        
+        return {
+            'ticket_id': ticket.id,
+            'attendee': {
+                'id': ticket.attendee.id,
+                'name': f"{ticket.attendee.first_name} {ticket.attendee.last_name}",
+                'email': ticket.attendee.email
+            },
+            'event': {
+                'id': event.id,
+                'title': event.title
+            },
+            'ticket_type': ticket.purchase.ticket_type.name,
+            'entry_time': ticket.used_at,
+            'exit_time': ticket.exit_time,
+            'duration': duration_str,
+            'status': 'Completed' if ticket.exit_time else ('In Progress' if ticket.is_used else 'Not Used')
+        }

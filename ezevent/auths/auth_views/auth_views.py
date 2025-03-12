@@ -226,7 +226,7 @@ def send_forgot_password_email(request):
     token = forgot_password_token(email)
 
     subject = 'Forgot Password - Ezevents'
-    reset_url = f"http://127.0.0.1:5501/Public/resetPassword.html?token={token}"
+    reset_url = f"https://ez-event.vercel.app/resetPassword.html?token={token}"
     message = format_html(f"""
     <html>
     <body>
@@ -400,3 +400,8 @@ class UserProfileUpdateView(generics.UpdateAPIView):
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
     
+class UserDetailView(generics.RetrieveAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Users.objects.all()
+    lookup_field = 'id'
