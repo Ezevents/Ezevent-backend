@@ -26,4 +26,7 @@ urlpatterns = [
     path('scan_ticket', views.ScanTicketView.as_view(), name='scan_ticket'),
     path('scan_exit', views.ScanTicketExitView.as_view(), name='scan_ticket_exit'),
     path('generate_scanner_url', views.GenerateScannerUrlView.as_view(), name='generate_scanner_url'),
+
+    path('tickets_details/', views.TicketDetailsView.as_view(), name='ticket-list'),
+    path('tickets_details/<int:ticket_id>/', views.TicketDetailsView.as_view(), name='ticket-detail'),
 ]

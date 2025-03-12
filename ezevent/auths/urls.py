@@ -1,7 +1,7 @@
 from django.urls import path
 from .auth_views.auth_views import (
     home, login, signup_with_token, logout, send_forgot_password_email,update_password, signup_clients, GenerateSignupTokenView,
-    UserProfileUpdateView
+    UserProfileUpdateView, UserDetailView
 )
 
 from .auth_views.admin_views import (
@@ -26,5 +26,7 @@ urlpatterns = [
 
     path('admin/delete_user/<int:user_id>/', DeleteUserView.as_view(), name='delete_user'),
     path('admin/users/<int:user_id>/suspend/', SuspendUserView.as_view(), name='suspend-user'),
+
+    path('users/<int:id>/', UserDetailView.as_view(), name='user-detail'),
 
 ]

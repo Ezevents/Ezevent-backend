@@ -29,7 +29,7 @@ class Purchase(models.Model):
     user = models.ForeignKey(Users, on_delete=models.SET_NULL, null=True, blank=True) 
     ticket_type = models.ForeignKey('promoter.TicketType', on_delete=models.PROTECT, related_name='purchases')
     quantity = models.PositiveIntegerField(default=1)
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=0)
     purchase_date = models.DateTimeField(auto_now_add=True)
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
