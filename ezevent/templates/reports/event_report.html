@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Event Report: {{ event.title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin-bottom: 5px;
+            color: #222;
+        }
+        .header p {
+            color: #666;
+            margin-top: 0;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        h2 {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            color: #444;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .summary-box {
+            background-color: #f7f7f7;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-item {
+            display: inline-block;
+            width: 24%;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .summary-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            display: block;
+        }
+        .summary-label {
+            font-size: 12px;
+            color: #666;
+        }
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffecb5;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Event Report: {{ event.title }}</h1>
+        <p>{{ event.start_date|date:"F d, Y" }} at {{ event.venue }}, {{ event.location }}</p>
+    </div>
+    
+    <div class="section">
+        <h2>Summary</h2>
+        <div class="summary-box">
+            <div class="summary-item">
+                <span class="summary-number">{{ stats.total_tickets_sold }}</span>
+                <span class="summary-label">Tickets Sold</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-number">{{ stats.attended_count }}</span>
+                <span class="summary-label">Attendees</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-number">{{ stats.total_revenue }}</span>
+                <span class="summary-label">Revenue</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-number">{{ stats.injured_exits }}</span>
+                <span class="summary-label">Injuries</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Attendance Statistics</h2>
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Count</th>
+                <th>Percentage</th>
+            </tr>
+            <tr>
+                <td>Total Tickets Sold</td>
+                <td>{{ stats.total_tickets_sold }}</td>
+                <td>100%</td>
+            </tr>
+            <tr>
+                <td>Attendees (Used Tickets)</td>
+                <td>{{ stats.attended_count }}</td>
+                <td>{% widthratio stats.attended_count stats.total_tickets_sold 100 %}%</td>
+            </tr>
+            <tr>
+                <td>Normal Exits</td>
+                <td>{{ stats.normal_exits }}</td>
+                <td>{% widthratio stats.normal_exits stats.attended_count 100 %}%</td>
+            </tr>
+            <tr>
+                <td>Injury/Emergency Exits</td>
+                <td>{{ stats.injured_exits }}</td>
+                <td>{% widthratio stats.injured_exits stats.attended_count 100 %}%</td>
+            </tr>
+            <tr>
+                <td>Still Inside</td>
+                <td>{{ stats.still_inside }}</td>
+                <td>{% widthratio stats.still_inside stats.attended_count 100 %}%</td>
+            </tr>
+            <tr>
+                <td>Unused Tickets</td>
+                <td>{{ stats.unused_tickets }}</td>
+                <td>{% widthratio stats.unused_tickets stats.total_tickets_sold 100 %}%</td>
+            </tr>
+        </table>
+    </div>
+    
+    <div class="section">
+        <h2>Ticket Type Breakdown</h2>
+        <table>
+            <tr>
+                <th>Ticket Type</th>
+                <th>Price</th>
+                <th>Quantity Sold</th>
+                <th>Revenue</th>
+            </tr>
+            {% for ticket_type in ticket_types %}
+            <tr>
+                <td>{{ ticket_type.name }}</td>
+                <td>{{ ticket_type.price }}</td>
+                <td>{{ ticket_type.sold }}</td>
+                <td>{{ ticket_type.revenue }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    
+    {% if injured_attendees %}
+    <div class="section">
+        <h2>Injury/Emergency Reports</h2>
+        {% if injured_attendees|length > 0 %}
+        <div class="alert">
+            <strong>Note:</strong> This section contains sensitive medical information and should be handled with appropriate confidentiality.
+        </div>
+        <table>
+            <tr>
+                <th>Attendee</th>
+                <th>Contact</th>
+                <th>Exit Time</th>
+                <th>Exit Reason</th>
+                <th>Notes</th>
+            </tr>
+            {% for attendee in injured_attendees %}
+            <tr>
+                <td>{{ attendee.name }}</td>
+                <td>{{ attendee.email }}<br>{{ attendee.phone }}</td>
+                <td>{{ attendee.exit_time|date:"F d, Y H:i" }}</td>
+                <td>{{ attendee.exit_reason|title }}</td>
+                <td>{{ attendee.notes }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <p>No injuries or emergencies were reported for this event.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <div class="footer">
+        <p>Report generated on {{ generated_at|date:"F d, Y" }} at {{ generated_at|time:"H:i" }} by {{ generated_by }}</p>
+        <p>This report is confidential and intended for authorized personnel only.</p>
+    </div>
+</body>
+</html>

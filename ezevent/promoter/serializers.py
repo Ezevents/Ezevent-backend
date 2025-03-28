@@ -16,14 +16,17 @@ class TicketTypeSerializer(serializers.ModelSerializer):
 
 class EventSerializer(serializers.ModelSerializer):
     ticket_types = TicketTypeSerializer(many=True, read_only=True)
-    
     class Meta:
         model = Event
         fields = '__all__'
         read_only_fields = ('promoter', 'created_at', 'updated_at')
+        extra_kwargs = {
+            'image': {'required': False}, 
+            'profile_pic': {'required': False}
+        }
 
     def validate(self, data):
-        if data['start_date'] >= data['end_date']:
-            raise serializers.ValidationError("End date must be after start date")
-            
+        if 'start_date' in data and 'end_date' in data:
+            if data['start_date'] >= data['end_date']:
+                raise serializers.ValidationError("End date must be after start date")
         return data

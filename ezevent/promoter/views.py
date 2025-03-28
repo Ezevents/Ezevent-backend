@@ -26,7 +26,12 @@ from ezevent.firebase_config import bucket
 from django.core.mail import EmailMessage
 from django.utils.html import format_html
 import requests
-# import datetime
+from django.http import HttpResponse
+from django.template.loader import get_template
+from django.utils import timezone
+from weasyprint import HTML
+import tempfile
+from io import BytesIO
 
 import logging
 logger = logging.getLogger(__name__)
@@ -60,7 +65,7 @@ class CreateEventView(generics.CreateAPIView):
                 image_url = blob.public_url
                 
                 data['profile_pic'] = image_url
-
+                
                 if 'image' in data:
                     data.pop('image')
                 
@@ -101,6 +106,53 @@ class UpdateEventView(generics.UpdateAPIView):
 
     def get_queryset(self):
         return Event.objects.filter(promoter=self.request.user)
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        event_image = request.FILES.get('image')
+        
+        data = request.data.copy()
+        
+        if event_image:
+            try:
+                file_content = event_image.read()
+                file_name = event_image.name
+                file_ext = os.path.splitext(file_name)[1]
+
+                timestamp = int(datetime.now().timestamp() * 1000)
+                unique_filename = f"{timestamp}_{uuid.uuid4().hex}{file_ext}"
+
+                firebase_path = f"event_images/{unique_filename}"
+                blob = bucket.blob(firebase_path)
+                
+                blob.upload_from_string(
+                    file_content,
+                    content_type=event_image.content_type
+                )
+                
+                blob.make_public()
+                image_url = blob.public_url
+                
+                data['profile_pic'] = image_url
+
+                if 'image' in data:
+                    data.pop('image')
+                
+            except Exception as e:
+                return Response(
+                    {"error": f"Failed to upload event image: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
     
 class PublishEventView(APIView):
     """Publish an event that's currently in draft status"""
@@ -636,10 +688,12 @@ def generate_scanner_url(user_id, expiry_hours=24):
     # Frontend URLs
     entry_url = f"https://ez-event.vercel.app/scan?token={token}"
     exit_url = f"https://ez-event.vercel.app/scan-exit?token={token}"
+    injury_exit_url = f"https://ez-event.vercel.app/scan-exit?token={token}&mode=injury"
     
     return {
         'entry_url': entry_url,
         'exit_url': exit_url,
+        'injury_exit_url': injury_exit_url,
         'expires_at': payload['exp']
     }
 
@@ -743,6 +797,9 @@ class ScanTicketExitView(APIView):
         scanner_id = getattr(request, 'scanner_user_id', None)
         try:
             qr_data = request.data.get('qr_data')
+            exit_reason = request.data.get('exit_reason', 'normal') 
+            injury_notes = request.data.get('injury_notes', '')      
+            
             if not qr_data:
                 return Response({'error': 'QR data is required'}, status=status.HTTP_400_BAD_REQUEST)
             
@@ -762,7 +819,6 @@ class ScanTicketExitView(APIView):
                     'error': 'Ticket not found'
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            
             if tickets.count() > 1:
                 logger.warning(f"Duplicate tickets found for exit: {purchase_id}, {attendee_id}")
                 
@@ -778,7 +834,8 @@ class ScanTicketExitView(APIView):
                 return Response({
                     'valid': False,
                     'error': 'Ticket has already been used for exit',
-                    'exit_time': ticket.exit_time
+                    'exit_time': ticket.exit_time,
+                    'exit_reason': ticket.exit_reason
                 })
         
             event = ticket.purchase.ticket_type.event
@@ -787,6 +844,8 @@ class ScanTicketExitView(APIView):
         
             ticket.exit_scanned_by = scanner_id
             ticket.exit_time = timezone.now()
+            ticket.exit_reason = exit_reason 
+            ticket.injury_notes = injury_notes 
             
             ticket.time_spent = ticket.exit_time - ticket.used_at
             ticket.save()
@@ -794,6 +853,9 @@ class ScanTicketExitView(APIView):
             hours, remainder = divmod(ticket.time_spent.total_seconds(), 3600)
             minutes, seconds = divmod(remainder, 60)
             time_spent_str = f"{int(hours)}h {int(minutes)}m"
+            
+            if exit_reason == 'injured' or exit_reason == 'emergency':
+                logger.warning(f"MEDICAL ATTENTION NEEDED: Attendee {ticket.attendee.first_name} {ticket.attendee.last_name} exited with status '{exit_reason}'")
             
             return Response({
                 'valid': True,
@@ -809,6 +871,7 @@ class ScanTicketExitView(APIView):
                 'ticket_type': ticket.purchase.ticket_type.name,
                 'entry_time': ticket.used_at,
                 'exit_time': ticket.exit_time,
+                'exit_reason': ticket.exit_reason,
                 'time_spent': time_spent_str
             })
             
@@ -817,22 +880,36 @@ class ScanTicketExitView(APIView):
                 'valid': False,
                 'error': f'Invalid QR code data: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
-
+        
 class TicketDetailsView(APIView):
     """View to get ticket details including entry/exit times"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request, ticket_id=None, format=None):
+        user_id = request.user.id
+        
         try:
+            promoter_events = Event.objects.filter(promoter_id=user_id).values_list('id', flat=True)
+            
             if ticket_id:
-                ticket = TicketPDF.objects.get(id=ticket_id)
+                ticket = TicketPDF.objects.get(
+                    id=ticket_id,
+                    purchase__ticket_type__event_id__in=promoter_events
+                )
                 return Response(self._format_ticket_data(ticket))
             else:
                 event_id = request.query_params.get('event_id')
                 
-                tickets = TicketPDF.objects.all()
+                tickets = TicketPDF.objects.filter(
+                    purchase__ticket_type__event_id__in=promoter_events
+                )
                 
                 if event_id:
+                    if int(event_id) not in promoter_events:
+                        return Response(
+                            {'error': 'You do not have permission to view tickets for this event'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
                     tickets = tickets.filter(purchase__ticket_type__event_id=event_id)
                 
                 result = [self._format_ticket_data(ticket) for ticket in tickets]
@@ -876,5 +953,144 @@ class TicketDetailsView(APIView):
             'entry_time': ticket.used_at,
             'exit_time': ticket.exit_time,
             'duration': duration_str,
-            'status': 'Completed' if ticket.exit_time else ('In Progress' if ticket.is_used else 'Not Used')
+            'status': 'Completed' if ticket.exit_time else ('Still Inside' if ticket.is_used else 'Not Used')
         }
+    
+class InjuryReportsView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, event_id=None):
+        user_id = request.user.id
+
+        if event_id:
+            events = Event.objects.filter(id=event_id, promoter_id=user_id)
+            if not events.exists():
+                return Response({'error': 'Event not found or you do not have permission'}, 
+                               status=status.HTTP_404_NOT_FOUND)
+        else:
+            events = Event.objects.filter(promoter_id=user_id)
+        
+        injury_data = []
+        
+        for event in events:
+            ticket_types = TicketType.objects.filter(event=event)
+            
+            purchases = Purchase.objects.filter(ticket_type__in=ticket_types)
+            
+            injured_tickets = TicketPDF.objects.filter(
+                purchase__in=purchases,
+                exit_reason__in=['injured', 'emergency']
+            )
+            
+            for ticket in injured_tickets:
+                injury_data.append({
+                    'event': event.title,
+                    'attendee_name': f"{ticket.attendee.first_name} {ticket.attendee.last_name}",
+                    'attendee_email': ticket.attendee.email,
+                    'attendee_phone': ticket.attendee.phone,
+                    'entry_time': ticket.used_at,
+                    'exit_time': ticket.exit_time,
+                    'exit_reason': ticket.exit_reason,
+                    'injury_notes': ticket.injury_notes,
+                    'ticket_type': ticket.purchase.ticket_type.name
+                })
+        
+        return Response(injury_data)
+    
+
+class EventReportPDFView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, event_id, format=None):
+        try:
+
+            user_id = request.user.id
+            try:
+                event = Event.objects.get(id=event_id, promoter_id=user_id)
+            except Event.DoesNotExist:
+                return Response(
+                    {'error': 'Event not found or you do not have permission'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            report_format = request.query_params.get('format', 'pdf')
+            
+            ticket_types = TicketType.objects.filter(event=event)
+
+            purchases = Purchase.objects.filter(ticket_type__in=ticket_types)
+            
+            tickets = TicketPDF.objects.filter(purchase__in=purchases)
+
+            stats = {
+                'total_tickets_sold': purchases.aggregate(Sum('quantity'))['quantity__sum'] or 0,
+                'total_revenue': purchases.filter(payment_status='completed').aggregate(Sum('total_amount'))['total_amount__sum'] or 0,
+                'total_attendees': tickets.count(),
+                'attended_count': tickets.filter(is_used=True).count(),
+                'normal_exits': tickets.filter(is_used=True, exit_time__isnull=False, exit_reason='normal').count(),
+                'injured_exits': tickets.filter(is_used=True, exit_time__isnull=False, exit_reason__in=['injured', 'emergency']).count(),
+                'still_inside': tickets.filter(is_used=True, exit_time__isnull=True).count(),
+                'unused_tickets': tickets.filter(is_used=False).count(),
+            }
+            
+            ticket_type_stats = []
+            for tt in ticket_types:
+                type_purchases = purchases.filter(ticket_type=tt)
+                ticket_type_stats.append({
+                    'name': tt.name,
+                    'price': float(tt.price),
+                    'sold': type_purchases.aggregate(Sum('quantity'))['quantity__sum'] or 0,
+                    'revenue': float(type_purchases.filter(payment_status='completed').aggregate(Sum('total_amount'))['total_amount__sum'] or 0),
+                })
+            
+            injured_attendees = tickets.filter(
+                is_used=True, 
+                exit_time__isnull=False, 
+                exit_reason__in=['injured', 'emergency']
+            ).select_related('attendee')
+            
+            injured_list = [{
+                'name': f"{ticket.attendee.first_name} {ticket.attendee.last_name}",
+                'email': ticket.attendee.email,
+                'phone': ticket.attendee.phone,
+                'exit_time': ticket.exit_time,
+                'exit_reason': ticket.exit_reason,
+                'notes': ticket.injury_notes or 'No notes provided'
+            } for ticket in injured_attendees]
+            
+            context = {
+                'event': {
+                    'id': event.id,
+                    'title': event.title,
+                    'venue': event.venue,
+                    'location': event.location,
+                    'start_date': event.start_date,
+                    'end_date': event.end_date,
+                },
+                'stats': stats,
+                'ticket_types': ticket_type_stats,
+                'injured_attendees': injured_list,
+                'generated_at': timezone.now(),
+                'generated_by': f"{request.user.firstname} {request.user.lastname}"
+            }
+            
+            if report_format.lower() == 'json':
+                return Response(context)
+            
+            template = get_template('reports/event_report.html')
+            html_string = template.render(context)
+            
+            pdf_file = BytesIO()
+            HTML(string=html_string).write_pdf(pdf_file)
+            pdf_file.seek(0)
+            
+            filename = f"event_report_{event.title.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d')}.pdf"
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Error generating report: {str(e)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )

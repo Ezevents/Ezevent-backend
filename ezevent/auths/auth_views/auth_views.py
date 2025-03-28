@@ -169,7 +169,7 @@ def login(request):
     response.set_cookie(
         key=settings.SIMPLE_JWT["AUTH_COOKIE"],
         value=tokens["access_token"],
-        max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),  # Convert timedelta to seconds
+        max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()), 
         secure=settings.SIMPLE_JWT["AUTH_COOKIE_SECURE"],
         httponly=settings.SIMPLE_JWT["AUTH_COOKIE_HTTP_ONLY"],
         samesite=settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"]
@@ -178,7 +178,7 @@ def login(request):
     response.set_cookie(
         key=settings.SIMPLE_JWT["AUTH_COOKIE_REFRESH"],
         value=tokens["refresh_token"],
-        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),  # Convert timedelta to seconds
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()), 
         secure=settings.SIMPLE_JWT["AUTH_COOKIE_SECURE"],
         httponly=settings.SIMPLE_JWT["AUTH_COOKIE_HTTP_ONLY"],
         samesite=settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"]
