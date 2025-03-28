@@ -62,6 +62,12 @@ class TicketPDF(models.Model):
     used_at = models.DateTimeField(null=True, blank=True)
     exit_time = models.DateTimeField(null=True, blank=True)
     time_spent = models.DurationField(null=True, blank=True)
+    exit_reason = models.CharField(max_length=50, choices=[
+        ('normal', 'Normal Exit'),
+        ('injured', 'Injured'),
+        ('emergency', 'Emergency'),
+    ], default='normal')
+    injury_notes = models.TextField(blank=True, null=True)
     
     def __str__(self):
         return f"Ticket for {self.attendee.first_name} {self.attendee.last_name}"

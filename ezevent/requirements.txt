@@ -24,3 +24,4 @@ pillow
 firebase_admin
 opentelemetry-api 
 opentelemetry-instrumentation
+weasyprint
