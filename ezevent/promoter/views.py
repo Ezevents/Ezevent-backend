@@ -29,7 +29,6 @@ import requests
 from django.http import HttpResponse
 from django.template.loader import get_template
 from django.utils import timezone
-# from weasyprint import HTML
 import tempfile
 from io import BytesIO
 
