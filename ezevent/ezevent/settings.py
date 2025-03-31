@@ -10,7 +10,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 DEBUG = False
 
-ALLOWED_HOSTS = ['127.0.0.1','ezevent-backend.up.railway.app','localhost']
+ALLOWED_HOSTS = ['127.0.0.1','ezevent-backend.up.railway.app','localhost', 'ezevent-backend-v2.up.railway.app']
 
 TIME_ZONE = 'Africa/Nairobi'
 USE_TZ = True
