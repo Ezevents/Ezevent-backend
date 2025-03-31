@@ -29,7 +29,7 @@ import requests
 from django.http import HttpResponse
 from django.template.loader import get_template
 from django.utils import timezone
-from weasyprint import HTML
+# from weasyprint import HTML
 import tempfile
 from io import BytesIO
 
@@ -1003,7 +1003,6 @@ class EventReportPDFView(APIView):
     
     def get(self, request, event_id, format=None):
         try:
-
             user_id = request.user.id
             try:
                 event = Event.objects.get(id=event_id, promoter_id=user_id)
@@ -1016,9 +1015,7 @@ class EventReportPDFView(APIView):
             report_format = request.query_params.get('format', 'pdf')
             
             ticket_types = TicketType.objects.filter(event=event)
-
             purchases = Purchase.objects.filter(ticket_type__in=ticket_types)
-            
             tickets = TicketPDF.objects.filter(purchase__in=purchases)
 
             stats = {
@@ -1076,15 +1073,206 @@ class EventReportPDFView(APIView):
             if report_format.lower() == 'json':
                 return Response(context)
             
-            template = get_template('reports/event_report.html')
-            html_string = template.render(context)
+            buffer = BytesIO()
+
+            pdf = canvas.Canvas(buffer, pagesize=letter)
+            width, height = letter
+
+            def calc_percentage(part, whole):
+                if whole == 0:
+                    return 0
+                return int((part / whole) * 100)
             
-            pdf_file = BytesIO()
-            HTML(string=html_string).write_pdf(pdf_file)
-            pdf_file.seek(0)
+
+            pdf.setFont("Helvetica-Bold", 18)
+            pdf.drawCentredString(width/2, height-50, f"Event Report: {event.title}")
             
+            pdf.setFont("Helvetica", 12)
+            pdf.drawCentredString(width/2, height-70, 
+                f"{event.start_date.strftime('%B %d, %Y')} at {event.venue}, {event.location}")
+            
+
+            pdf.setFont("Helvetica-Bold", 14)
+            pdf.drawString(50, height-120, "Summary")
+
+            pdf.rect(50, height-220, width-100, 80, stroke=1, fill=0)
+
+            box_width = width-100
+            item_width = box_width / 4
+            
+
+            summary_data = [
+                ("Tickets Sold", stats['total_tickets_sold']),
+                ("Attendees", stats['attended_count']),
+                ("Revenue", stats['total_revenue']),
+                ("Injuries", stats['injured_exits'])
+            ]
+            
+            for i, (label, value) in enumerate(summary_data):
+                x_pos = 50 + (i * item_width) + (item_width/2)
+                
+                pdf.setFont("Helvetica-Bold", 16)
+                pdf.drawCentredString(x_pos, height-170, str(value))
+                
+                pdf.setFont("Helvetica", 10)
+                pdf.drawCentredString(x_pos, height-190, label)
+            
+
+            pdf.setFont("Helvetica-Bold", 14)
+            pdf.drawString(50, height-250, "Attendance Statistics")
+
+            header = ["Category", "Count", "Percentage"]
+            header_width = [250, 100, 100]
+            y_position = height-280
+            
+            for i, col in enumerate(header):
+                x_start = 50 + sum(header_width[:i])
+                pdf.setFont("Helvetica-Bold", 10)
+                pdf.drawString(x_start, y_position, col)
+
+            pdf.line(50, y_position-5, sum(header_width)+50, y_position-5)
+
+            attendance_data = [
+                ("Total Tickets Sold", stats['total_tickets_sold'], "100%"),
+                ("Attendees (Used Tickets)", stats['attended_count'], 
+                 f"{calc_percentage(stats['attended_count'], stats['total_tickets_sold'])}%"),
+                ("Normal Exits", stats['normal_exits'], 
+                 f"{calc_percentage(stats['normal_exits'], stats['attended_count'])}%"),
+                ("Injury/Emergency Exits", stats['injured_exits'], 
+                 f"{calc_percentage(stats['injured_exits'], stats['attended_count'])}%"),
+                ("Still Inside", stats['still_inside'], 
+                 f"{calc_percentage(stats['still_inside'], stats['attended_count'])}%"),
+                ("Unused Tickets", stats['unused_tickets'], 
+                 f"{calc_percentage(stats['unused_tickets'], stats['total_tickets_sold'])}%")
+            ]
+            
+            y_position -= 20
+            for row in attendance_data:
+                for i, col in enumerate(row):
+                    x_start = 50 + sum(header_width[:i])
+                    pdf.setFont("Helvetica", 10)
+                    pdf.drawString(x_start, y_position, str(col))
+                y_position -= 20
+            
+            if y_position < 300:
+                pdf.showPage()
+                y_position = height - 50
+                pdf.setFont("Helvetica-Bold", 14)
+                pdf.drawString(50, y_position, "Ticket Type Breakdown")
+                y_position -= 30
+            else:
+                y_position -= 30
+                pdf.setFont("Helvetica-Bold", 14)
+                pdf.drawString(50, y_position, "Ticket Type Breakdown")
+                y_position -= 30
+            
+            header = ["Ticket Type", "Price", "Quantity Sold", "Revenue"]
+            header_width = [200, 100, 100, 100]
+            
+            for i, col in enumerate(header):
+                x_start = 50 + sum(header_width[:i])
+                pdf.setFont("Helvetica-Bold", 10)
+                pdf.drawString(x_start, y_position, col)
+            
+            pdf.line(50, y_position-5, sum(header_width)+50, y_position-5)
+            
+            y_position -= 20
+            for tt in ticket_type_stats:
+                row = [tt['name'], f"${tt['price']:.2f}", str(tt['sold']), f"${tt['revenue']:.2f}"]
+                for i, col in enumerate(row):
+                    x_start = 50 + sum(header_width[:i])
+                    pdf.setFont("Helvetica", 10)
+                    pdf.drawString(x_start, y_position, col)
+                y_position -= 20
+            
+            if injured_list:
+                if y_position < 200:
+                    pdf.showPage()
+                    y_position = height - 50
+                else:
+                    y_position -= 40
+                
+                pdf.setFont("Helvetica-Bold", 14)
+                pdf.drawString(50, y_position, "Injury/Emergency Reports")
+                y_position -= 30
+                
+
+                pdf.setFillColorRGB(1, 0.95, 0.8) 
+                pdf.rect(50, y_position-30, width-100, 25, stroke=1, fill=1)
+                pdf.setFillColorRGB(0, 0, 0)  # Back to black
+                pdf.setFont("Helvetica-Bold", 10)
+                pdf.drawString(60, y_position-15, "Note: This section contains sensitive medical information and should be handled with appropriate confidentiality.")
+                
+                y_position -= 50
+                
+
+                header = ["Attendee", "Contact", "Exit Time", "Exit Reason", "Notes"]
+                header_width = [100, 120, 100, 80, 100]
+                
+                for i, col in enumerate(header):
+                    x_start = 50 + sum(header_width[:i])
+                    pdf.setFont("Helvetica-Bold", 10)
+                    pdf.drawString(x_start, y_position, col)
+                
+
+                pdf.line(50, y_position-5, sum(header_width)+50, y_position-5)
+                
+                y_position -= 20
+                for attendee in injured_list:
+
+                    if y_position < 100:
+                        pdf.showPage()
+                        y_position = height - 50
+                        
+
+                        for i, col in enumerate(header):
+                            x_start = 50 + sum(header_width[:i])
+                            pdf.setFont("Helvetica-Bold", 10)
+                            pdf.drawString(x_start, y_position, col)
+                        
+                        pdf.line(50, y_position-5, sum(header_width)+50, y_position-5)
+                        y_position -= 20
+                    
+                    exit_time_str = attendee['exit_time'].strftime('%b %d, %Y %H:%M') if attendee['exit_time'] else "N/A"
+                    
+
+                    columns = [
+                        attendee['name'],
+                        f"{attendee['email']}\n{attendee['phone']}",
+                        exit_time_str,
+                        attendee['exit_reason'].title(),
+                        attendee['notes'][:30] + ('...' if len(attendee['notes']) > 30 else '')
+                    ]
+                    
+                    max_lines = 1
+                    for i, col in enumerate(columns):
+                        x_start = 50 + sum(header_width[:i])
+                        pdf.setFont("Helvetica", 8)
+                        
+
+                        lines = col.split('\n')
+                        if len(lines) > max_lines:
+                            max_lines = len(lines)
+                        
+                        for j, line in enumerate(lines):
+                            pdf.drawString(x_start, y_position - (j * 12), line)
+                    
+                    y_position -= (max_lines * 12) + 8  
+            
+
+            pdf.showPage() 
+            pdf.setFont("Helvetica", 10)
+            generated_at_str = context['generated_at'].strftime('%B %d, %Y at %H:%M')
+            pdf.drawCentredString(width/2, 50, f"Report generated on {generated_at_str} by {context['generated_by']}")
+            pdf.setFont("Helvetica", 8)
+            pdf.drawCentredString(width/2, 30, "This report is confidential and intended for authorized personnel only.")
+            
+            # Save PDF
+            pdf.save()
+            
+            buffer.seek(0)
             filename = f"event_report_{event.title.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d')}.pdf"
-            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response = HttpResponse(buffer, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
             return response
