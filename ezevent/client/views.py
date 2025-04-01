@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.utils import timezone
@@ -12,6 +13,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 import uuid
 import qrcode
+from ezevent.firebase_config import bucket
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -47,6 +49,53 @@ class EventTicketsView(generics.ListAPIView):
 class CreatePurchaseView(generics.CreateAPIView):
     """Create a new ticket purchase"""
     serializer_class = PurchaseSerializer
+    
+    def create(self, request, *args, **kwargs):
+        payment_screenshot = request.FILES.get('payment_screenshot')
+        
+        data = request.data.copy()
+        
+        if payment_screenshot:
+            try:
+                file_content = payment_screenshot.read()
+                file_name = payment_screenshot.name
+                file_ext = os.path.splitext(file_name)[1]
+
+                timestamp = int(datetime.now().timestamp() * 1000)
+                unique_filename = f"{timestamp}_{uuid.uuid4().hex}{file_ext}"
+
+                firebase_path = f"payment_screenshots/{unique_filename}"
+                blob = bucket.blob(firebase_path)
+                
+                blob.upload_from_string(
+                    file_content,
+                    content_type=payment_screenshot.content_type
+                )
+                
+                blob.make_public()
+                screenshot_url = blob.public_url
+                
+                data['payment_screenshot'] = screenshot_url
+                
+            except Exception as e:
+                return Response(
+                    {"error": f"Failed to upload payment screenshot: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if 'payment_screenshot' in data and hasattr(data['payment_screenshot'], 'read'):
+            data.pop('payment_screenshot')
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        
+        if request.user.is_authenticated:
+            self.perform_create(serializer)
+        else:
+            serializer.save()
+            
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     def perform_create(self, serializer):
         if self.request.user.is_authenticated:

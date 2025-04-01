@@ -29,7 +29,6 @@ import requests
 from django.http import HttpResponse
 from django.template.loader import get_template
 from django.utils import timezone
-# from weasyprint import HTML
 import tempfile
 from io import BytesIO
 
@@ -431,12 +430,24 @@ class PendingPaymentsListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
+        events = Event.objects.filter(promoter=self.request.user)
+        
         return Purchase.objects.filter(
-            ticket_type__event__promoter=self.request.user,
+            ticket_type__event__in=events,
             payment_status='pending',
-            payment_screenshot__isnull=False, 
+            payment_screenshot__isnull=False,  
             is_approved_by_promoter=False
-        ).order_by('-purchase_date')
+        ).order_by('-purchase_date').select_related('ticket_type', 'ticket_type__event')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        event_id = request.query_params.get('event_id')
+        if event_id:
+            queryset = queryset.filter(ticket_type__event_id=event_id)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 class PromoterPaymentApprovalView(generics.UpdateAPIView):
     """Promoter approves payment and generates PDF ticket with QR code"""
