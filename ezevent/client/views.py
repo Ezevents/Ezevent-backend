@@ -83,6 +83,9 @@ class CreatePurchaseView(generics.CreateAPIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
+        if 'payment_screenshot' in data and hasattr(data['payment_screenshot'], 'read'):
+            data.pop('payment_screenshot')
+        
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         

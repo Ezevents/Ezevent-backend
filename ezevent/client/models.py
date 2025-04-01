@@ -36,7 +36,7 @@ class Purchase(models.Model):
     transaction_reference = models.CharField(max_length=100, blank=True, null=True)
     purchaser_email = models.EmailField()
     purchaser_phone = models.CharField(max_length=20)
-    payment_screenshot = models.ImageField(upload_to='payment_screenshots/', null=True, blank=True)
+    payment_screenshot = models.CharField(max_length=500, null=True, blank=True)
     is_approved_by_promoter = models.BooleanField(default=False)
     approval_date = models.DateTimeField(null=True, blank=True)
     qr_code = models.ImageField(upload_to='qr_codes/', null=True, blank=True)
